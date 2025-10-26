@@ -3769,27 +3769,29 @@ const char miniunknown[] PROGMEM = {
   
 // Helper function, should be part of the weather station library and should disappear soon
 const char* getMeteoconIconFromProgmem(String iconText) {
-  if (iconText == "01d" || iconText == "01n") return sunny;
-  if (iconText == "02d" || iconText == "02n") return partlysunny;
-  if (iconText == "03d" || iconText == "03n") return partlycloudy;
-  if (iconText == "04d" || iconText == "04n") return mostlycloudy;
-  if (iconText == "09d" || iconText == "09n") return rain;
-  if (iconText == "10d" || iconText == "10n") return rain;
-  if (iconText == "11d" || iconText == "11n") return tstorms;
-  if (iconText == "13d" || iconText == "13n") return snow;
-  if (iconText == "50d" || iconText == "50n") return fog;
+  String normalized = iconText;
+  normalized.toLowerCase();
+  if (normalized == "01d" || normalized == "01n" || normalized == "clear" || normalized == "clear-day" || normalized == "clear-night") return sunny;
+  if (normalized == "02d" || normalized == "02n" || normalized == "partly-cloudy" || normalized == "partly-cloudy-day" || normalized == "partly-cloudy-night") return partlysunny;
+  if (normalized == "03d" || normalized == "03n" || normalized == "04d" || normalized == "04n" || normalized == "cloudy" || normalized == "mostly-cloudy" || normalized == "overcast") return mostlycloudy;
+  if (normalized == "09d" || normalized == "09n" || normalized == "10d" || normalized == "10n" || normalized == "rain" || normalized == "light-rain" || normalized == "rain-showers" || normalized == "rain-showers-day" || normalized == "rain-showers-night") return rain;
+  if (normalized == "11d" || normalized == "11n" || normalized == "thunderstorm" || normalized == "thunderstorms") return tstorms;
+  if (normalized == "13d" || normalized == "13n" || normalized == "snow" || normalized == "snow-showers" || normalized == "snow-showers-day" || normalized == "snow-showers-night") return snow;
+  if (normalized == "50d" || normalized == "50n" || normalized == "fog" || normalized == "mist") return fog;
+  if (normalized == "sleet" || normalized == "hail") return sleet;
   return unknown;
 }
 const char* getMiniMeteoconIconFromProgmem(String iconText) {
-  if (iconText == "01d" || iconText == "01n") return minisunny;
-  if (iconText == "02d" || iconText == "02n") return minipartlysunny;
-  if (iconText == "03d" || iconText == "03n") return minipartlycloudy;
-  if (iconText == "04d" || iconText == "04n") return minimostlycloudy;
-  if (iconText == "09d" || iconText == "09n") return minirain;
-  if (iconText == "10d" || iconText == "10n") return minirain;
-  if (iconText == "11d" || iconText == "11n") return minitstorms;
-  if (iconText == "13d" || iconText == "13n") return minisleet;
-  if (iconText == "50d" || iconText == "50n") return minifog;
+  String normalized = iconText;
+  normalized.toLowerCase();
+  if (normalized == "01d" || normalized == "01n" || normalized == "clear" || normalized == "clear-day" || normalized == "clear-night") return minisunny;
+  if (normalized == "02d" || normalized == "02n" || normalized == "partly-cloudy" || normalized == "partly-cloudy-day" || normalized == "partly-cloudy-night") return minipartlysunny;
+  if (normalized == "03d" || normalized == "03n" || normalized == "04d" || normalized == "04n" || normalized == "cloudy" || normalized == "mostly-cloudy" || normalized == "overcast") return minimostlycloudy;
+  if (normalized == "09d" || normalized == "09n" || normalized == "10d" || normalized == "10n" || normalized == "rain" || normalized == "light-rain" || normalized == "rain-showers" || normalized == "rain-showers-day" || normalized == "rain-showers-night") return minirain;
+  if (normalized == "11d" || normalized == "11n" || normalized == "thunderstorm" || normalized == "thunderstorms") return minitstorms;
+  if (normalized == "13d" || normalized == "13n" || normalized == "snow" || normalized == "snow-showers" || normalized == "snow-showers-day" || normalized == "snow-showers-night") return minisleet;
+  if (normalized == "50d" || normalized == "50n" || normalized == "fog" || normalized == "mist") return minifog;
+  if (normalized == "sleet" || normalized == "hail") return minisleet;
   return miniunknown;
 }
 
