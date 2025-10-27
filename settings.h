@@ -18,6 +18,9 @@ SOFTWARE.
 See more at http://blog.squix.ch
 */
 
+#pragma once
+
+#include <Arduino.h>
 #include <simpleDSTadjust.h>
 
 // Setup
@@ -25,7 +28,7 @@ See more at http://blog.squix.ch
 #define WIFI_PASS "your password"
 #define WIFI_HOSTNAME "Zihatec-weather-station-ESP32"
 
-const int UPDATE_INTERVAL_SECS = 15 * 60; // Update every 10 minutes
+const int UPDATE_INTERVAL_SECS = 15 * 60; // Update every 15 minutes
 const int SLEEP_INTERVAL_SECS = 0;   // Going to Sleep after idle times, set 0 for dont sleep
 
 

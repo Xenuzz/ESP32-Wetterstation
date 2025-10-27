@@ -25,9 +25,9 @@ See more at https://blog.squix.org
 /*****************************
  * Important: see settings.h to configure your settings!!!
  * ***************************/
-#include "settings.h"
-
 #include <Arduino.h>
+
+#include "settings.h"
 #include <ctype.h>
 #include <SPI.h>
 #include <WiFi.h>
