@@ -28,11 +28,15 @@ See more at https://blog.squix.org
 #include "settings.h"
 
 #include <Arduino.h>
+#include <ctype.h>
 #include <SPI.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 
+#if TOUCH_ENABLED
 #include <XPT2046_Touchscreen.h>
 #include "TouchControllerWS.h"
+#endif
 
 
 /***
@@ -43,9 +47,8 @@ See more at https://blog.squix.org
  * - simpleDSTadjust by neptune2
  ***/
 
-#include <JsonListener.h>
-#include <OpenWeatherMapCurrent.h>
-#include <OpenWeatherMapForecast.h>
+#include <HTTPClient.h>
+#include <ArduinoJson.h>
 #include <Astronomy.h>
 #include <MiniGrafx.h>
 #include <Carousel.h>
@@ -63,8 +66,6 @@ See more at https://blog.squix.org
 #define MINI_WHITE 1
 #define MINI_YELLOW 2
 #define MINI_BLUE 3
-
-#define MAX_FORECASTS 12
 
 // defines the colors usable in the paletted 16 color frame buffer
 uint16_t palette[] = {ILI9341_BLACK, // 0
@@ -85,17 +86,60 @@ int BITS_PER_PIXEL = 2; // 2^2 =  4 colors
 ILI9341_SPI tft = ILI9341_SPI(TFT_CS, TFT_DC, TFT_RST);
 MiniGrafx gfx = MiniGrafx(&tft, BITS_PER_PIXEL, palette);
 Carousel carousel(&gfx, 0, 0, 240, 100);
-
-
+#if TOUCH_ENABLED
 XPT2046_Touchscreen ts(TOUCH_CS, TOUCH_IRQ);
 TouchControllerWS touchController(&ts);
+#endif
 
 void calibrationCallback(int16_t x, int16_t y);
 CalibrationCallback calibration = &calibrationCallback;
   
 
-OpenWeatherMapCurrentData currentWeather;
-OpenWeatherMapForecastData forecasts[MAX_FORECASTS];
+struct BrightSkyCurrentWeather {
+  String icon;
+  String condition;
+  String description;
+  float temperature = NAN;
+  float windSpeed = NAN;
+  float windDirection = NAN;
+  float humidity = NAN;
+  float pressure = NAN;
+  float precipitation = NAN;
+  float visibility = NAN;
+  float cloudCover = NAN;
+  time_t observationTime = 0;
+  time_t sunrise = 0;
+  time_t sunset = 0;
+};
+
+struct BrightSkyForecastData {
+  time_t observationTime = 0;
+  float temperature = NAN;
+  float humidity = NAN;
+  float precipitation = NAN;
+  float pressure = NAN;
+  float windSpeed = NAN;
+  float windDirection = NAN;
+  String icon;
+  String summary;
+};
+
+struct WeatherAlert {
+  String headline;
+  String event;
+  String severity;
+  String description;
+  String instruction;
+  time_t onset = 0;
+  time_t expires = 0;
+};
+
+BrightSkyCurrentWeather currentWeather;
+BrightSkyForecastData forecasts[MAX_FORECASTS];
+uint8_t forecastCount = 0;
+WeatherAlert weatherAlerts[MAX_WEATHER_ALERTS];
+uint8_t weatherAlertCount = 0;
+bool hasWeatherAlerts = false;
 simpleDSTadjust dstAdjusted(StartRule, EndRule);
 Astronomy::MoonData moonData;
 
@@ -120,6 +164,17 @@ void drawForecast2(MiniGrafx *display, CarouselState* state, int16_t x, int16_t 
 void drawForecast3(MiniGrafx *display, CarouselState* state, int16_t x, int16_t y);
 FrameCallback frames[] = { drawForecast1, drawForecast2, drawForecast3 };
 int frameCount = 3;
+bool fetchCurrentWeather();
+bool fetchForecasts();
+bool fetchWeatherAlerts();
+bool fetchSunTimes();
+time_t parseTimestamp(const String &isoString);
+String formatAlertTime(time_t timestamp);
+String formatNullableFloat(float value, uint8_t decimals = 1, const String &suffix = "");
+String translateCondition(const String &condition);
+String capitalizeSentence(const String &text);
+String severityLabel(const String &severity);
+void drawWeatherAlertPopup();
 
 // how many different screens do we have?
 int screenCount = 5;
@@ -167,8 +222,10 @@ void setup() {
 
   connectWifi();
 
+#if TOUCH_ENABLED
   Serial.println("Initializing touch screen...");
   ts.begin();
+#endif
 
   carousel.setFrames(frames, frameCount);
   carousel.disableAllIndicators();
@@ -183,18 +240,16 @@ void setup() {
 }
 
 long lastDrew = 0;
-bool btnClick;
-uint8_t MAX_TOUCHPOINTS = 10;
-TS_Point points[10];
-uint8_t currentTouchPoint = 0;
 void loop() {
   gfx.fillBuffer(MINI_BLACK);
+#if TOUCH_ENABLED
   if (touchController.isTouched(10)) {
     TS_Point p = touchController.getPoint();
     Serial.print("Touch event");
     screen = (screen + 1) % screenCount;
-    
+
   }
+#endif
 
   
   if (screen == 0) {
@@ -217,6 +272,9 @@ void loop() {
     drawForecastTable(4);
   } else if (screen == 4) {
     drawAbout();
+  }
+  if (hasWeatherAlerts) {
+    drawWeatherAlertPopup();
   }
   gfx.commit();
 
@@ -258,25 +316,28 @@ void updateData() {
   dstOffset = UTC_OFFSET * 3600 + dstAdjusted.time(nullptr) - time(nullptr);
   Serial.printf("Time difference for DST: %d", dstOffset);
 
-  drawProgress(50, "Updating conditions...");
-  OpenWeatherMapCurrent *currentWeatherClient = new OpenWeatherMapCurrent();
-  currentWeatherClient->setMetric(IS_METRIC);
-  currentWeatherClient->setLanguage(OPEN_WEATHER_MAP_LANGUAGE);
-  currentWeatherClient->updateCurrentById(&currentWeather, OPEN_WEATHER_MAP_APP_ID, OPEN_WEATHER_MAP_LOCATION_ID);
-  delete currentWeatherClient;
-  currentWeatherClient = nullptr;
+  drawProgress(40, "Updating conditions...");
+  if (!fetchCurrentWeather()) {
+    Serial.println("Failed to load current weather from Bright Sky");
+  }
 
-  drawProgress(70, "Updating forecasts...");
-  OpenWeatherMapForecast *forecastClient = new OpenWeatherMapForecast();
-  forecastClient->setMetric(IS_METRIC);
-  forecastClient->setLanguage(OPEN_WEATHER_MAP_LANGUAGE);
-  uint8_t allowedHours[] = {12, 0};
-  forecastClient->setAllowedHours(allowedHours, sizeof(allowedHours));
-  forecastClient->updateForecastsById(forecasts, OPEN_WEATHER_MAP_APP_ID, OPEN_WEATHER_MAP_LOCATION_ID, MAX_FORECASTS);
-  delete forecastClient;
-  forecastClient = nullptr;
+  drawProgress(60, "Updating forecasts...");
+  if (!fetchForecasts()) {
+    Serial.println("Failed to load forecast data from Bright Sky");
+  }
 
-  drawProgress(80, "Updating astronomy...");
+  drawProgress(70, "Loading sun times...");
+  if (!fetchSunTimes()) {
+    Serial.println("Failed to load sunrise and sunset information");
+  }
+
+  drawProgress(80, "Checking alerts...");
+  if (!fetchWeatherAlerts()) {
+    Serial.println("Failed to load weather alerts");
+  }
+  hasWeatherAlerts = weatherAlertCount > 0;
+
+  drawProgress(90, "Updating astronomy...");
   Astronomy *astronomy = new Astronomy();
   moonData = astronomy->calculateMoonData(time(nullptr));
   float lunarMonth = 29.53;
@@ -287,6 +348,336 @@ void updateData() {
   delay(1000);
 }
 
+bool fetchCurrentWeather() {
+  WiFiClientSecure client;
+  client.setInsecure();
+  HTTPClient http;
+
+  String timezoneParam = String(BRIGHT_SKY_TIMEZONE);
+  timezoneParam.replace("/", "%2F");
+  String url = String("https://api.brightsky.dev/current_weather?lat=") + String(BRIGHT_SKY_LATITUDE, 4) +
+               "&lon=" + String(BRIGHT_SKY_LONGITUDE, 4) + "&tz=" + timezoneParam;
+
+  if (!http.begin(client, url)) {
+    Serial.println("Unable to initialize HTTP connection for current weather");
+    return false;
+  }
+
+  int httpCode = http.GET();
+  if (httpCode != HTTP_CODE_OK) {
+    Serial.printf("Bright Sky current weather request failed: %d\n", httpCode);
+    http.end();
+    return false;
+  }
+
+  DynamicJsonDocument doc(8192);
+  DeserializationError error = deserializeJson(doc, http.getStream());
+  http.end();
+  if (error) {
+    Serial.printf("Failed to parse current weather JSON: %s\n", error.c_str());
+    return false;
+  }
+
+  JsonObject weather = doc["weather"];
+  if (weather.isNull()) {
+    return false;
+  }
+
+  currentWeather.temperature = weather["temperature"].isNull() ? NAN : weather["temperature"].as<float>();
+  currentWeather.windSpeed = weather["wind_speed"].isNull() ? NAN : weather["wind_speed"].as<float>();
+  currentWeather.windDirection = weather["wind_direction"].isNull() ? NAN : weather["wind_direction"].as<float>();
+  currentWeather.humidity = weather["relative_humidity"].isNull() ? NAN : weather["relative_humidity"].as<float>();
+  currentWeather.pressure = weather["pressure_msl"].isNull() ? NAN : weather["pressure_msl"].as<float>();
+  currentWeather.precipitation = weather["precipitation"].isNull() ? NAN : weather["precipitation"].as<float>();
+  currentWeather.visibility = weather["visibility"].isNull() ? NAN : weather["visibility"].as<float>();
+  currentWeather.cloudCover = weather["cloud_cover"].isNull() ? NAN : weather["cloud_cover"].as<float>();
+  currentWeather.condition = weather["condition"].as<String>();
+  currentWeather.icon = weather["icon"].as<String>();
+  currentWeather.observationTime = parseTimestamp(weather["timestamp"].as<String>());
+
+  String translatedCondition = translateCondition(currentWeather.condition);
+  currentWeather.description = translatedCondition.length() ? translatedCondition : currentWeather.condition;
+  currentWeather.description = capitalizeSentence(currentWeather.description);
+  if (currentWeather.description.length() == 0) {
+    currentWeather.description = "--";
+  }
+
+  return true;
+}
+
+bool fetchForecasts() {
+  forecastCount = 0;
+
+  time_t nowTs = time(nullptr);
+  struct tm startTm = *gmtime(&nowTs);
+  char startDate[11];
+  strftime(startDate, sizeof(startDate), "%Y-%m-%d", &startTm);
+
+  time_t endTs = nowTs + 48 * 3600;
+  struct tm endTm = *gmtime(&endTs);
+  char endDate[11];
+  strftime(endDate, sizeof(endDate), "%Y-%m-%d", &endTm);
+
+  WiFiClientSecure client;
+  client.setInsecure();
+  HTTPClient http;
+
+  String timezoneParam = String(BRIGHT_SKY_TIMEZONE);
+  timezoneParam.replace("/", "%2F");
+  String url = String("https://api.brightsky.dev/weather?lat=") + String(BRIGHT_SKY_LATITUDE, 4) +
+               "&lon=" + String(BRIGHT_SKY_LONGITUDE, 4) +
+               "&date=" + startDate + "&last_date=" + endDate +
+               "&tz=" + timezoneParam + "&max_entries=" + String(MAX_FORECASTS);
+
+  if (!http.begin(client, url)) {
+    Serial.println("Unable to initialize HTTP connection for forecast");
+    return false;
+  }
+
+  int httpCode = http.GET();
+  if (httpCode != HTTP_CODE_OK) {
+    Serial.printf("Bright Sky forecast request failed: %d\n", httpCode);
+    http.end();
+    return false;
+  }
+
+  DynamicJsonDocument doc(24576);
+  DeserializationError error = deserializeJson(doc, http.getStream());
+  http.end();
+  if (error) {
+    Serial.printf("Failed to parse forecast JSON: %s\n", error.c_str());
+    return false;
+  }
+
+  JsonArray weatherArray = doc["weather"].as<JsonArray>();
+  if (weatherArray.isNull()) {
+    return false;
+  }
+
+  for (JsonObject entry : weatherArray) {
+    if (forecastCount >= MAX_FORECASTS) {
+      break;
+    }
+    BrightSkyForecastData &forecast = forecasts[forecastCount];
+    forecast.observationTime = parseTimestamp(entry["timestamp"].as<String>());
+    forecast.temperature = entry["temperature"].isNull() ? NAN : entry["temperature"].as<float>();
+    forecast.humidity = entry["relative_humidity"].isNull() ? NAN : entry["relative_humidity"].as<float>();
+    forecast.precipitation = entry["precipitation"].isNull() ? NAN : entry["precipitation"].as<float>();
+    forecast.pressure = entry["pressure_msl"].isNull() ? NAN : entry["pressure_msl"].as<float>();
+    forecast.windSpeed = entry["wind_speed"].isNull() ? NAN : entry["wind_speed"].as<float>();
+    forecast.windDirection = entry["wind_direction"].isNull() ? NAN : entry["wind_direction"].as<float>();
+    forecast.icon = entry["icon"].as<String>();
+    String summary = translateCondition(entry["condition"].as<String>());
+    forecast.summary = capitalizeSentence(summary.length() ? summary : entry["condition"].as<String>());
+    forecastCount++;
+  }
+
+  return forecastCount > 0;
+}
+
+bool fetchSunTimes() {
+  time_t nowTs = time(nullptr);
+  struct tm localTm = *localtime(&nowTs);
+  char date[11];
+  strftime(date, sizeof(date), "%Y-%m-%d", &localTm);
+
+  WiFiClientSecure client;
+  client.setInsecure();
+  HTTPClient http;
+
+  String timezoneParam = String(BRIGHT_SKY_TIMEZONE);
+  timezoneParam.replace("/", "%2F");
+  String url = String("https://api.brightsky.dev/sunrise-sunset?lat=") + String(BRIGHT_SKY_LATITUDE, 4) +
+               "&lon=" + String(BRIGHT_SKY_LONGITUDE, 4) +
+               "&date=" + date + "&tz=" + timezoneParam;
+
+  if (!http.begin(client, url)) {
+    Serial.println("Unable to initialize HTTP connection for sun times");
+    return false;
+  }
+
+  int httpCode = http.GET();
+  if (httpCode != HTTP_CODE_OK) {
+    Serial.printf("Bright Sky sun times request failed: %d\n", httpCode);
+    http.end();
+    return false;
+  }
+
+  DynamicJsonDocument doc(4096);
+  DeserializationError error = deserializeJson(doc, http.getStream());
+  http.end();
+  if (error) {
+    Serial.printf("Failed to parse sun times JSON: %s\n", error.c_str());
+    return false;
+  }
+
+  currentWeather.sunrise = parseTimestamp(doc["sunrise"].as<String>());
+  currentWeather.sunset = parseTimestamp(doc["sunset"].as<String>());
+  return currentWeather.sunrise != 0 && currentWeather.sunset != 0;
+}
+
+bool fetchWeatherAlerts() {
+  weatherAlertCount = 0;
+
+  WiFiClientSecure client;
+  client.setInsecure();
+  HTTPClient http;
+
+  String url = String("https://api.brightsky.dev/alerts?lat=") + String(BRIGHT_SKY_LATITUDE, 4) +
+               "&lon=" + String(BRIGHT_SKY_LONGITUDE, 4) + "&status=actual";
+
+  if (!http.begin(client, url)) {
+    Serial.println("Unable to initialize HTTP connection for alerts");
+    return false;
+  }
+
+  int httpCode = http.GET();
+  if (httpCode != HTTP_CODE_OK) {
+    Serial.printf("Bright Sky alert request failed: %d\n", httpCode);
+    http.end();
+    return false;
+  }
+
+  DynamicJsonDocument doc(16384);
+  DeserializationError error = deserializeJson(doc, http.getStream());
+  http.end();
+  if (error) {
+    Serial.printf("Failed to parse alert JSON: %s\n", error.c_str());
+    return false;
+  }
+
+  JsonArray alerts = doc["alerts"].as<JsonArray>();
+  if (alerts.isNull()) {
+    return false;
+  }
+
+  for (JsonObject alert : alerts) {
+    if (weatherAlertCount >= MAX_WEATHER_ALERTS) {
+      break;
+    }
+    WeatherAlert &target = weatherAlerts[weatherAlertCount];
+    target.headline = alert["headline"].as<String>();
+    target.event = alert["event"].as<String>();
+    target.severity = alert["severity"].as<String>();
+    target.description = alert["description"].as<String>();
+    target.instruction = alert["instruction"].as<String>();
+    target.onset = parseTimestamp(alert["onset"].as<String>());
+    target.expires = parseTimestamp(alert["expires"].as<String>());
+    weatherAlertCount++;
+  }
+
+  return true;
+}
+
+time_t parseTimestamp(const String &isoString) {
+  if (!isoString.length()) {
+    return 0;
+  }
+
+  int year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0;
+  char tzSign = '+';
+  int tzHour = 0, tzMinute = 0;
+
+  if (isoString.endsWith("Z")) {
+    sscanf(isoString.c_str(), "%d-%d-%dT%d:%d:%dZ", &year, &month, &day, &hour, &minute, &second);
+  } else {
+    sscanf(isoString.c_str(), "%d-%d-%dT%d:%d:%d%c%d:%d", &year, &month, &day, &hour, &minute, &second, &tzSign, &tzHour, &tzMinute);
+  }
+
+  if (year == 0) {
+    return 0;
+  }
+
+  if (tzSign != '+' && tzSign != '-') {
+    tzSign = '+';
+  }
+
+  if (tzHour < 0 || tzHour > 14) {
+    tzHour = 0;
+  }
+  if (tzMinute < 0 || tzMinute > 59) {
+    tzMinute = 0;
+  }
+
+  if (isoString.endsWith("Z")) {
+    tzHour = 0;
+    tzMinute = 0;
+    tzSign = '+';
+  }
+
+  if (month <= 2) {
+    month += 12;
+    year -= 1;
+  }
+
+  long era = year / 400;
+  long yoe = year - era * 400;
+  long doy = (153 * (month - 3) + 2) / 5 + day - 1;
+  long doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+  long days = era * 146097 + doe - 719468; // Days since Unix epoch
+
+  time_t utc = days * 86400 + hour * 3600 + minute * 60 + second;
+  int offsetSeconds = tzHour * 3600 + tzMinute * 60;
+  if (tzSign == '+') {
+    utc -= offsetSeconds;
+  } else {
+    utc += offsetSeconds;
+  }
+
+  return utc;
+}
+
+String formatAlertTime(time_t timestamp) {
+  if (timestamp == 0) {
+    return "-";
+  }
+  struct tm *timeInfo = localtime(&timestamp);
+  char buffer[20];
+  strftime(buffer, sizeof(buffer), "%d.%m. %H:%M", timeInfo);
+  return String(buffer);
+}
+
+String formatNullableFloat(float value, uint8_t decimals, const String &suffix) {
+  if (isnan(value)) {
+    return "-";
+  }
+  return String(value, decimals) + suffix;
+}
+
+String translateCondition(const String &condition) {
+  String lower = condition;
+  lower.toLowerCase();
+  if (lower == "clear" || lower == "clear-day" || lower == "clear-night") return "klar";
+  if (lower == "partly-cloudy" || lower == "partly-cloudy-day" || lower == "partly-cloudy-night") return "teilweise bewölkt";
+  if (lower == "mostly-cloudy" || lower == "cloudy" || lower == "overcast") return "bewölkt";
+  if (lower == "fog" || lower == "mist") return "Nebel";
+  if (lower == "rain" || lower == "rain-showers" || lower == "rain-showers-day" || lower == "rain-showers-night" || lower == "light-rain" || lower == "drizzle") return "Regen";
+  if (lower == "sleet" || lower == "hail") return "Schneeregen";
+  if (lower == "snow" || lower == "snow-showers" || lower == "snow-showers-day" || lower == "snow-showers-night") return "Schnee";
+  if (lower == "thunderstorm" || lower == "thunderstorms") return "Gewitter";
+  if (lower == "wind" || lower == "windy") return "Windig";
+  return lower;
+}
+
+String capitalizeSentence(const String &text) {
+  if (!text.length()) {
+    return text;
+  }
+  String result = text;
+  result.toLowerCase();
+  result.setCharAt(0, toupper(result.charAt(0)));
+  return result;
+}
+
+String severityLabel(const String &severity) {
+  String lower = severity;
+  lower.toLowerCase();
+  if (lower == "minor") return "Gering";
+  if (lower == "moderate") return "Mäßig";
+  if (lower == "severe") return "Schwer";
+  if (lower == "extreme") return "Extrem";
+  return severity;
+}
 // Progress bar helper
 void drawProgress(uint8_t percentage, String text) {
   gfx.fillBuffer(MINI_BLACK);
@@ -358,8 +749,11 @@ void drawCurrentWeather() {
   gfx.setFont(ArialRoundedMTBold_36);
   gfx.setColor(MINI_WHITE);
   gfx.setTextAlignment(TEXT_ALIGN_RIGHT);
-   
-  gfx.drawString(220, 78, String(currentWeather.temp, 1) + (IS_METRIC ? "°C" : "°F"));
+
+  String temperature = isnan(currentWeather.temperature)
+                        ? String("--")
+                        : String(currentWeather.temperature, 1) + (IS_METRIC ? "°C" : "°F");
+  gfx.drawString(220, 78, temperature);
 
   gfx.setFont(ArialRoundedMTBold_14);
   gfx.setColor(MINI_YELLOW);
@@ -388,6 +782,9 @@ void drawForecast3(MiniGrafx *display, CarouselState* state, int16_t x, int16_t 
 
 // helper for the forecast columns
 void drawForecastDetail(uint16_t x, uint16_t y, uint8_t dayIndex) {
+  if (dayIndex >= forecastCount) {
+    return;
+  }
   gfx.setColor(MINI_YELLOW);
   gfx.setFont(ArialRoundedMTBold_14);
   gfx.setTextAlignment(TEXT_ALIGN_CENTER);
@@ -396,11 +793,15 @@ void drawForecastDetail(uint16_t x, uint16_t y, uint8_t dayIndex) {
   gfx.drawString(x + 25, y - 15, WDAY_NAMES[timeinfo->tm_wday] + " " + String(timeinfo->tm_hour) + ":00");
 
   gfx.setColor(MINI_WHITE);
-  gfx.drawString(x + 25, y, String(forecasts[dayIndex].temp, 1) + (IS_METRIC ? "°C" : "°F"));
+  String tempText = isnan(forecasts[dayIndex].temperature) ? String("--") :
+                    String(forecasts[dayIndex].temperature, 1) + (IS_METRIC ? "°C" : "°F");
+  gfx.drawString(x + 25, y, tempText);
 
   gfx.drawPalettedBitmapFromPgm(x, y + 15, getMiniMeteoconIconFromProgmem(forecasts[dayIndex].icon));
   gfx.setColor(MINI_BLUE);
-  gfx.drawString(x + 25, y + 60, String(forecasts[dayIndex].rain, 1) + (IS_METRIC ? "mm" : "in"));
+  String rainText = isnan(forecasts[dayIndex].precipitation) ? String("--") :
+                    String(forecasts[dayIndex].precipitation, 1) + (IS_METRIC ? "mm" : "in");
+  gfx.drawString(x + 25, y + 60, rainText);
 }
 
 // draw moonphase and sunrise/set and moonrise/set
@@ -421,12 +822,20 @@ void drawAstronomy() {
   gfx.setColor(MINI_YELLOW);
   gfx.drawString(5, 250, "Sonne");
   gfx.setColor(MINI_WHITE);
-  time_t time = currentWeather.sunrise + dstOffset;
   gfx.drawString(5, 276, "Rise:");
-  gfx.drawString(45, 276, getTime(&time));
-  time = currentWeather.sunset + dstOffset;
+  if (currentWeather.sunrise != 0) {
+    time_t time = currentWeather.sunrise + dstOffset;
+    gfx.drawString(45, 276, getTime(&time));
+  } else {
+    gfx.drawString(45, 276, "--:--");
+  }
   gfx.drawString(5, 291, "Set:");
-  gfx.drawString(45, 291, getTime(&time));
+  if (currentWeather.sunset != 0) {
+    time_t time = currentWeather.sunset + dstOffset;
+    gfx.drawString(45, 291, getTime(&time));
+  } else {
+    gfx.drawString(45, 291, "--:--");
+  }
 
   gfx.setTextAlignment(TEXT_ALIGN_RIGHT);
   gfx.setColor(MINI_YELLOW);
@@ -454,13 +863,13 @@ void drawCurrentWeatherDetail() {
   }
   // String weatherIcon;
   // String weatherText;
-  drawLabelValue(0, "Temperature:", currentWeather.temp + degreeSign);
-  drawLabelValue(1, "Wind Speed:", String(currentWeather.windSpeed, 1) + (IS_METRIC ? "m/s" : "mph") );
-  drawLabelValue(2, "Wind Dir:", String(currentWeather.windDeg, 1) + "°");
-  drawLabelValue(3, "Humidity:", String(currentWeather.humidity) + "%");
-  drawLabelValue(4, "Pressure:", String(currentWeather.pressure) + "hPa");
-  drawLabelValue(5, "Clouds:", String(currentWeather.clouds) + "%");
-  drawLabelValue(6, "Visibility:", String(currentWeather.visibility) + "m");
+  drawLabelValue(0, "Temperature:", isnan(currentWeather.temperature) ? "-" : String(currentWeather.temperature, 1) + degreeSign);
+  drawLabelValue(1, "Wind Speed:", formatNullableFloat(currentWeather.windSpeed, 1, IS_METRIC ? "m/s" : "mph"));
+  drawLabelValue(2, "Wind Dir:", isnan(currentWeather.windDirection) ? "-" : String(currentWeather.windDirection, 0) + "°");
+  drawLabelValue(3, "Humidity:", formatNullableFloat(currentWeather.humidity, 0, "%"));
+  drawLabelValue(4, "Pressure:", formatNullableFloat(currentWeather.pressure, 0, "hPa"));
+  drawLabelValue(5, "Clouds:", formatNullableFloat(currentWeather.cloudCover, 0, "%"));
+  drawLabelValue(6, "Precip.:", formatNullableFloat(currentWeather.precipitation, 1, IS_METRIC ? "mm" : "in"));
 
 
   /*gfx.setTextAlignment(TEXT_ALIGN_LEFT);
@@ -517,7 +926,7 @@ void drawForecastTable(uint8_t start) {
   if (IS_METRIC) {
     degreeSign = "°C";
   }
-  for (uint8_t i = start; i < start + 4; i++) {
+  for (uint8_t i = start; i < start + 4 && i < forecastCount; i++) {
     gfx.setTextAlignment(TEXT_ALIGN_LEFT);
     y = 45 + (i - start) * 75;
     if (y > 320) {
@@ -529,44 +938,104 @@ void drawForecastTable(uint8_t start) {
     struct tm * timeinfo = localtime (&time);
     gfx.drawString(120, y - 15, WDAY_NAMES[timeinfo->tm_wday] + " " + String(timeinfo->tm_hour) + ":00");
 
-   
+
     gfx.drawPalettedBitmapFromPgm(0, 15 + y, getMiniMeteoconIconFromProgmem(forecasts[i].icon));
     gfx.setTextAlignment(TEXT_ALIGN_LEFT);
     gfx.setColor(MINI_YELLOW);
     gfx.setFont(ArialRoundedMTBold_14);
-    gfx.drawString(10, y, forecasts[i].main);
+    gfx.drawString(10, y, forecasts[i].summary);
     gfx.setTextAlignment(TEXT_ALIGN_LEFT);
     
     gfx.setColor(MINI_BLUE);
     gfx.drawString(50, y, "T:");
     gfx.setColor(MINI_WHITE);
-    gfx.drawString(70, y, String(forecasts[i].temp, 0) + degreeSign);
+    String tempText = isnan(forecasts[i].temperature) ? String("--") : String(forecasts[i].temperature, 0) + degreeSign;
+    gfx.drawString(70, y, tempText);
     
     gfx.setColor(MINI_BLUE);
     gfx.drawString(50, y + 15, "H:");
     gfx.setColor(MINI_WHITE);
-    gfx.drawString(70, y + 15, String(forecasts[i].humidity) + "%");
+    String humidityText = isnan(forecasts[i].humidity) ? String("-") : String(forecasts[i].humidity, 0) + "%";
+    gfx.drawString(70, y + 15, humidityText);
 
     gfx.setColor(MINI_BLUE);
     gfx.drawString(50, y + 30, "P: ");
     gfx.setColor(MINI_WHITE);
-    gfx.drawString(70, y + 30, String(forecasts[i].rain, 2) + (IS_METRIC ? "mm" : "in"));
+    String precipText = isnan(forecasts[i].precipitation) ? String("--") : String(forecasts[i].precipitation, 2) + (IS_METRIC ? "mm" : "in");
+    gfx.drawString(70, y + 30, precipText);
 
     gfx.setColor(MINI_BLUE);
     gfx.drawString(130, y, "Pr:");
     gfx.setColor(MINI_WHITE);
-    gfx.drawString(170, y, String(forecasts[i].pressure, 0) + "hPa");
+    String pressureText = isnan(forecasts[i].pressure) ? String("--") : String(forecasts[i].pressure, 0) + "hPa";
+    gfx.drawString(170, y, pressureText);
     
     gfx.setColor(MINI_BLUE);
     gfx.drawString(130, y + 15, "WSp:");
     gfx.setColor(MINI_WHITE);
-    gfx.drawString(170, y + 15, String(forecasts[i].windSpeed, 0) + (IS_METRIC ? "m/s" : "mph") );
+    String windSpeedText = isnan(forecasts[i].windSpeed) ? String("--") : String(forecasts[i].windSpeed, 0) + (IS_METRIC ? "m/s" : "mph");
+    gfx.drawString(170, y + 15, windSpeedText);
 
     gfx.setColor(MINI_BLUE);
     gfx.drawString(130, y + 30, "WDi: ");
     gfx.setColor(MINI_WHITE);
-    gfx.drawString(170, y + 30, String(forecasts[i].windDeg, 0) + "°");
+    String windDirText = isnan(forecasts[i].windDirection) ? String("-") : String(forecasts[i].windDirection, 0) + "°";
+    gfx.drawString(170, y + 30, windDirText);
 
+  }
+}
+
+void drawWeatherAlertPopup() {
+  if (!hasWeatherAlerts || weatherAlertCount == 0) {
+    return;
+  }
+
+  const WeatherAlert &alert = weatherAlerts[0];
+  const uint16_t popupX = 10;
+  const uint16_t popupY = 50;
+  const uint16_t popupWidth = 220;
+  const uint16_t popupHeight = 200;
+
+  gfx.setColor(MINI_BLACK);
+  gfx.fillRect(popupX, popupY, popupWidth, popupHeight);
+  gfx.setColor(MINI_WHITE);
+  gfx.drawRect(popupX, popupY, popupWidth, popupHeight);
+
+  bool blink = (millis() / 400) % 2 == 0;
+  gfx.setTextAlignment(TEXT_ALIGN_CENTER);
+  gfx.setFont(ArialRoundedMTBold_14);
+  gfx.setColor(blink ? MINI_YELLOW : MINI_WHITE);
+  gfx.drawString(popupX + popupWidth / 2, popupY + 16, "Wetter Alarm");
+
+  gfx.setTextAlignment(TEXT_ALIGN_LEFT);
+  gfx.setFont(ArialRoundedMTBold_14);
+  gfx.setColor(MINI_BLUE);
+  String severityText = alert.severity.length() ? severityLabel(alert.severity) : "";
+  gfx.drawString(popupX + 10, popupY + 32, severityText);
+
+  gfx.setColor(MINI_WHITE);
+  String headline = alert.event.length() ? alert.event : alert.headline;
+  gfx.drawStringMaxWidth(popupX + 10, popupY + 48, popupWidth - 20, headline);
+
+  gfx.setFont(ArialMT_Plain_10);
+  gfx.setColor(MINI_YELLOW);
+  gfx.drawString(popupX + 10, popupY + 70, "Gültig:");
+  gfx.setColor(MINI_WHITE);
+  gfx.drawStringMaxWidth(popupX + 55, popupY + 70, popupWidth - 65,
+                         formatAlertTime(alert.onset) + " - " + formatAlertTime(alert.expires));
+
+  if (alert.description.length()) {
+    gfx.setColor(MINI_YELLOW);
+    gfx.drawString(popupX + 10, popupY + 86, "Info:");
+    gfx.setColor(MINI_WHITE);
+    gfx.drawStringMaxWidth(popupX + 10, popupY + 100, popupWidth - 20, alert.description);
+  }
+
+  if (alert.instruction.length()) {
+    gfx.setColor(MINI_YELLOW);
+    gfx.drawString(popupX + 10, popupY + 138, "Hinweis:");
+    gfx.setColor(MINI_WHITE);
+    gfx.drawStringMaxWidth(popupX + 10, popupY + 152, popupWidth - 20, alert.instruction);
   }
 }
 
