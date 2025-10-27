@@ -10,8 +10,8 @@ ESP32-Wetterstation mit ILI9341-Display, DWD-Daten (Bright Sky API) und blinkend
 - Optional: Gehäuse und Sensorik entsprechend deiner Hardware
 
 ### Software & Bibliotheken
-1. **Arduino IDE** (Version 2.x empfohlen) oder eine kompatible Toolchain
-2. **ESP32 Board Package** von Espressif Systems über den Boardverwalter installieren
+1. **Arduino IDE** (Version 2.x empfohlen) oder eine kompatible Toolchain  
+2. **ESP32 Board Package** von Espressif Systems über den Boardverwalter installieren  
 3. Folgende Bibliotheken über den Arduino Library Manager installieren:
    - Mini Grafx (Daniel Eichhorn)
    - ESP32 WeatherStation (Zihatec)
@@ -85,21 +85,22 @@ graph LR
   ESP32_GND --- GND_SHARED
   TFT_GND --- GND_SHARED
   TOUCH_GND --- GND_SHARED
+```
 
 | ESP32 | Display (ILI9341) | Touch (XPT2046) | Hinweis |
 |-------|-------------------|-----------------|---------|
-| 5V / VIN | VCC | – | Display-Versorgung (abhängig vom Modul ggf. 5 V)
-| 3V3 | – | VCC | Touchcontroller benötigt 3,3 V
-| GND | GND | GND | Gemeinsame Masse für alle Komponenten
-| GPIO23 | MOSI | T_DIN | SPI-Daten vom ESP32 zu Display & Touch
-| GPIO19 | MISO | T_DO | SPI-Daten vom Touch zum ESP32
-| GPIO18 | SCK | T_CLK | Gemeinsame SPI-Taktleitung
-| GPIO5 | CS | – | Chip-Select des Displays (`TFT_CS`)
-| GPIO4 | DC | – | Daten/Kommando (`TFT_DC`)
-| GPIO22 | RST | – | Reset des Displays (`TFT_RST`)
-| GPIO15 | LED | – | Hintergrundbeleuchtung steuerbar (Standard in `settings.h`)
-| GPIO14 | – | T_CS | Chip-Select des Touchcontrollers (`TOUCH_CS`)
-| GPIO2 / 27 | – | T_IRQ | Touch-Interrupt (abhängig von Platinenrevision)
+| 5V / VIN | VCC | – | Display-Versorgung (abhängig vom Modul ggf. 5 V) |
+| 3V3 | – | VCC | Touchcontroller benötigt 3,3 V |
+| GND | GND | GND | Gemeinsame Masse für alle Komponenten |
+| GPIO23 | MOSI | T_DIN | SPI-Daten vom ESP32 zu Display & Touch |
+| GPIO19 | MISO | T_DO | SPI-Daten vom Touch zum ESP32 |
+| GPIO18 | SCK | T_CLK | Gemeinsame SPI-Taktleitung |
+| GPIO5 | CS | – | Chip-Select des Displays (`TFT_CS`) |
+| GPIO4 | DC | – | Daten/Kommando (`TFT_DC`) |
+| GPIO22 | RST | – | Reset des Displays (`TFT_RST`) |
+| GPIO15 | LED | – | Hintergrundbeleuchtung steuerbar (Standard in `settings.h`) |
+| GPIO14 | – | T_CS | Chip-Select des Touchcontrollers (`TOUCH_CS`) |
+| GPIO2 / 27 | – | T_IRQ | Touch-Interrupt (abhängig von Platinenrevision) |
 
 > **Hinweis:** Auf manchen AZ-Touch-Revisionen liegt der Touch-Interrupt auf GPIO27 oder die Hintergrundbeleuchtung ist fest auf
 > 3,3 V verdrahtet. Passe in diesem Fall die Definitionen `TOUCH_IRQ` bzw. `TFT_LED` in `settings.h` an.
@@ -139,6 +140,13 @@ Falls du das Projekt via Git verwaltest, kannst du nach erfolgtem Upload die Än
 ```bash
 git add .
 git commit -m "Aktualisiere Konfiguration"
-git push origin <branch>
+git push origin <main>
 ```
-Ersetze `<branch>` durch den gewünschten Branch-Namen (z. B. `main` oder `work`).
+
+## Support / Hinweise
+Wenn GitHub weiterhin Probleme beim Rendern der Mermaid-Grafik zeigt, überprüfe bitte lokal in einem Editor (z. B. VS Code) die Markdown-Vorschau und achte darauf, dass:
+- die schließende Code-Fence ``` auf einer eigenen Zeile ohne zusätzliche unsichtbare Zeichen steht,
+- nach der schließenden ``` eine Leerzeile folgt (insbesondere vor Tabellen),
+- keine zusätzlichen Backticks oder unterschiedliche Arten von Backticks in derselben Code-Fence verwendet werden.
+
+Viel Erfolg beim Einsatz der Wetterstation!
