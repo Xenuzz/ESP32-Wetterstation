@@ -147,3 +147,15 @@ git commit -m "Aktualisiere Konfiguration"
 git push origin <branch>
 ```
 Ersetze `<branch>` durch den gewünschten Branch-Namen (z. B. `main` oder `work`).
+
+## Release Notes
+Nutze den folgenden Text als Grundlage für deine Release-Beschreibung, um die wichtigsten Anpassungen der aktuellen Version hervorzuheben:
+
+> **ESP32-Wetterstation – Aktualisierung**
+>
+> * Umstellung der Wetterdatenbeschaffung von OpenWeatherMap auf die Bright-Sky-API des Deutschen Wetterdienstes inklusive neuer Parser, Datenmodelle sowie Mapping auf die bestehenden Wetter-Icons.
+> * Integration eines blinkenden Pop-ups **„Wetter Alarm“**, das bei aktiven DWD-Warnungen automatisch erscheint und alle relevanten Details (Ereignis, Zeitraum, Schweregrad und Handlungsempfehlungen) anzeigt.
+> * Erweiterte Konfigurierbarkeit in `settings.h`: WLAN-Setup, Standortdaten, Anzeigeoptionen sowie ein neuer Schalter `TOUCH_ENABLED`, mit dem sich das XPT2046-Touchpanel komfortabel aktivieren oder deaktivieren lässt.
+> * Aktualisierte Dokumentation mit detailliertem Schaltplan, optionaler Touch-Verdrahtung, Installationsanleitung der benötigten Bibliotheken und Hinweisen zum Kompilieren, Hochladen und zum Git-Workflow.
+
+Passe Formulierungen oder Umfang nach Bedarf an (z. B. um Versionsnummern oder eigene Erweiterungen zu ergänzen).
