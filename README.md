@@ -27,61 +27,64 @@ an.
 
 ```mermaid
 graph LR
-    subgraph ESP32
-        ESP32_5V[5V / VIN]
-        ESP32_3V3[3V3]
-        ESP32_GND[GND]
-        GPIO23[GPIO23 (MOSI)]
-        GPIO19[GPIO19 (MISO)]
-        GPIO18[GPIO18 (SCK)]
-        GPIO5[GPIO5 (TFT_CS)]
-        GPIO4[GPIO4 (TFT_DC)]
-        GPIO22[GPIO22 (TFT_RST)]
-        GPIO15[GPIO15 (TFT_LED)]
-        GPIO14[GPIO14 (TOUCH_CS)]
-        GPIO2[GPIO2 (TOUCH_IRQ)]
-    end
+  subgraph ESP32
+    ESP32_5V["5V / VIN"]
+    ESP32_3V3["3V3"]
+    ESP32_GND["GND"]
+    GPIO23["GPIO23 (MOSI)"]
+    GPIO19["GPIO19 (MISO)"]
+    GPIO18["GPIO18 (SCK)"]
+    GPIO5["GPIO5 (TFT_CS)"]
+    GPIO4["GPIO4 (TFT_DC)"]
+    GPIO22["GPIO22 (TFT_RST)"]
+    GPIO15["GPIO15 (TFT_LED)"]
+    GPIO14["GPIO14 (TOUCH_CS)"]
+    GPIO2["GPIO2 (TOUCH_IRQ)"]
+  end
 
-    subgraph Display
-        TFT_VCC[VCC]
-        TFT_LED[TFT LED]
-        TFT_GND[GND]
-        TFT_MOSI[MOSI]
-        TFT_MISO[MISO]
-        TFT_SCK[SCK]
-        TFT_CS[CS]
-        TFT_DC[DC]
-        TFT_RST[RST]
-    end
+  subgraph Display
+    TFT_VCC["VCC"]
+    TFT_LED["TFT LED"]
+    TFT_GND["GND"]
+    TFT_MOSI["MOSI"]
+    TFT_MISO["MISO"]
+    TFT_SCK["SCK"]
+    TFT_CS["CS"]
+    TFT_DC["DC"]
+    TFT_RST["RST"]
+  end
 
-    subgraph Touchcontroller
-        TOUCH_VCC[VCC]
-        TOUCH_GND[GND]
-        TOUCH_MOSI[T_DIN]
-        TOUCH_MISO[T_DO]
-        TOUCH_SCK[T_CLK]
-        TOUCH_CS[T_CS]
-        TOUCH_IRQ[T_IRQ]
-    end
+  subgraph Touchcontroller
+    TOUCH_VCC["VCC"]
+    TOUCH_GND["GND"]
+    TOUCH_MOSI["T_DIN"]
+    TOUCH_MISO["T_DO"]
+    TOUCH_SCK["T_CLK"]
+    TOUCH_CS["T_CS"]
+    TOUCH_IRQ["T_IRQ"]
+  end
 
-    ESP32_5V --> TFT_VCC
-    ESP32_3V3 --> TOUCH_VCC
-    GPIO23 --> TFT_MOSI
-    GPIO23 --> TOUCH_MOSI
-    GPIO19 --> TFT_MISO
-    GPIO19 --> TOUCH_MISO
-    GPIO18 --> TFT_SCK
-    GPIO18 --> TOUCH_SCK
-    GPIO5 --> TFT_CS
-    GPIO4 --> TFT_DC
-    GPIO22 --> TFT_RST
-    GPIO15 --> TFT_LED
-    GPIO14 --> TOUCH_CS
-    GPIO2 --> TOUCH_IRQ
-    ESP32_GND --- GND_SHARED((GND))
-    TFT_GND --- GND_SHARED
-    TOUCH_GND --- GND_SHARED
-```
+  %% explicit shared ground node
+  GND_SHARED(("GND"))
+
+  ESP32_5V --> TFT_VCC
+  ESP32_3V3 --> TOUCH_VCC
+  GPIO23 --> TFT_MOSI
+  GPIO23 --> TOUCH_MOSI
+  GPIO19 --> TFT_MISO
+  GPIO19 --> TOUCH_MISO
+  GPIO18 --> TFT_SCK
+  GPIO18 --> TOUCH_SCK
+  GPIO5 --> TFT_CS
+  GPIO4 --> TFT_DC
+  GPIO22 --> TFT_RST
+  GPIO15 --> TFT_LED
+  GPIO14 --> TOUCH_CS
+  GPIO2 --> TOUCH_IRQ
+
+  ESP32_GND --- GND_SHARED
+  TFT_GND --- GND_SHARED
+  TOUCH_GND --- GND_SHARED
 
 | ESP32 | Display (ILI9341) | Touch (XPT2046) | Hinweis |
 |-------|-------------------|-----------------|---------|
