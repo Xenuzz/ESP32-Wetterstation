@@ -29,30 +29,14 @@ const int UPDATE_INTERVAL_SECS = 15 * 60; // Update every 10 minutes
 const int SLEEP_INTERVAL_SECS = 0;   // Going to Sleep after idle times, set 0 for dont sleep
 
 
-// OpenWeatherMap Settings
-// Sign up here to get an API key: https://docs.thingpulse.com/how-tos/openweathermap-key/
-String OPEN_WEATHER_MAP_APP_ID = "your_open_weather_id";
-/*
-Go to https://openweathermap.org/find?q= and search for a location. Go through the
-result set and select the entry closest to the actual location you want to display 
-data for. It'll be a URL like https://openweathermap.org/city/2657896. The number
-at the end is what you assign to the constant below.
- */
-String OPEN_WEATHER_MAP_LOCATION_ID = "2804279";
-String DISPLAYED_CITY_NAME = "Ziesar";
-
-
-/*
-Arabic -> ar, Bulgarian -> bg, Catalan -> ca, Czech -> cz, German -> de, Greek -> el,
-English -> en, Persian (Farsi) -> fa, Finnish -> fi, French -> fr, Galician -> gl,
-Croatian -> hr, Hungarian -> hu, Italian -> it, Japanese -> ja, Korean -> kr,
-Latvian -> la, Lithuanian -> lt, Macedonian -> mk, Dutch -> nl, Polish -> pl,
-Portuguese -> pt, Romanian -> ro, Russian -> ru, Swedish -> se, Slovak -> sk,
-Slovenian -> sl, Spanish -> es, Turkish -> tr, Ukrainian -> ua, Vietnamese -> vi,
-Chinese Simplified -> zh_cn, Chinese Traditional -> zh_tw.
-*/
-String OPEN_WEATHER_MAP_LANGUAGE = "de";
+// Bright Sky (DWD) settings
+// See https://brightsky.dev/docs/ for details about the available parameters.
+const double BRIGHT_SKY_LATITUDE = 52.2620;   // Latitude for the requested location
+const double BRIGHT_SKY_LONGITUDE = 12.2922;  // Longitude for the requested location
+const char* BRIGHT_SKY_TIMEZONE = "Europe/Berlin";
 const uint8_t MAX_FORECASTS = 10;
+const uint8_t MAX_WEATHER_ALERTS = 3;
+String DISPLAYED_CITY_NAME = "Ziesar";
 
 // Adjust according to your language
 const String WDAY_NAMES[] = {"SO", "MO", "DI", "MI", "DO", "FR", "SA"};
@@ -87,7 +71,9 @@ bool IS_STYLE_12HR = false;
 #define TFT_LED 15
 #define TFT_RST 22
 
-//#define HAVE_TOUCHPAD
+// Set to 1 if your display includes the XPT2046 touch controller, otherwise keep 0
+#define TOUCH_ENABLED 0
+
 #define TOUCH_CS 14
 #define TOUCH_IRQ 2 // enable this line for older ArduiTouch or AZ-Touch ESP pcb
 // #define TOUCH_IRQ 27 // enable this line for new AZ-Touch MOD pcb
