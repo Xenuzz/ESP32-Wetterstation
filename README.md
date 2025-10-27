@@ -9,6 +9,8 @@ ESP32-Wetterstation mit ILI9341-Display, DWD-Daten (Bright Sky API) und blinkend
 - 2,4" ILI9341-TFT (optional mit XPT2046-Touchmodul)
 - Optional: Gehäuse und Sensorik entsprechend deiner Hardware
 
+> **Ohne Touch unterwegs?** Das Projekt funktioniert vollständig mit einem reinen ILI9341-Display. Die Touch-Leitungen können unverdrahtet bleiben, solange `TOUCH_ENABLED` in der Konfiguration ausgeschaltet ist (siehe Abschnitt [Konfiguration](#konfiguration)).
+
 ### Software & Bibliotheken
 1. **Arduino IDE** (Version 2.x empfohlen) oder eine kompatible Toolchain
 2. **ESP32 Board Package** von Espressif Systems über den Boardverwalter installieren
@@ -18,13 +20,14 @@ ESP32-Wetterstation mit ILI9341-Display, DWD-Daten (Bright Sky API) und blinkend
    - Json Streaming Parser (Daniel Eichhorn)
    - simpleDSTadjust (neptune2)
    - ArduinoJson (Benoît Blanchon)
-   - Optional bei Nutzung des Touchpanels: XPT2046_Touchscreen (Paul Stoffregen)
+   - Optional bei Nutzung des Touchpanels: **XPT2046_Touchscreen** (Paul Stoffregen). Diese Bibliothek wird nur benötigt, wenn du `TOUCH_ENABLED` aktivierst.
 
 ## Schaltplan
 Der folgende Schaltplan zeigt die typischen Verbindungen des AZ-Touch-ESP32 (oder eines vergleichbaren ESP32 mit ILI9341-Display
 und XPT2046-Touchcontroller).
 Bei anderen Boards können die Pins variieren – passe sie in [`settings.h`](settings.h) entsprechend an.
 Wenn dein Display **keinen** Touch besitzt, lasse die Touch-Anschlüsse (rechte Spalte) einfach unverdrahtet.
+Für Display-only-Aufbauten reicht die Verdrahtung der linken beiden Spalten.
 
 ```mermaid
 graph LR
@@ -96,8 +99,8 @@ graph LR
 | GPIO4 | DC | – | Daten/Kommando (`TFT_DC`)
 | GPIO22 | RST | – | Reset des Displays (`TFT_RST`)
 | GPIO15 | LED | – | Hintergrundbeleuchtung steuerbar (Standard in `settings.h`)
-| GPIO14 | – | T_CS | Chip-Select des Touchcontrollers (`TOUCH_CS`)
-| GPIO2 / 27 | – | T_IRQ | Touch-Interrupt (abhängig von Platinenrevision)
+| GPIO14 | – | T_CS | Chip-Select des Touchcontrollers (`TOUCH_CS`) – nur anschließen, wenn Touch genutzt wird
+| GPIO2 / 27 | – | T_IRQ | Touch-Interrupt (abhängig von Platinenrevision) – nur anschließen, wenn Touch genutzt wird
 
 > **Hinweis:** Auf manchen AZ-Touch-Revisionen liegt der Touch-Interrupt auf GPIO27 oder die Hintergrundbeleuchtung ist fest auf
 > 3,3 V verdrahtet. Passe in diesem Fall die Definitionen `TOUCH_IRQ` bzw. `TFT_LED` in `settings.h` an. Ohne Touchmodul musst du
@@ -121,7 +124,9 @@ Alle anpassbaren Werte findest du in [`settings.h`](settings.h):
    ```
 3. **Anzeigeoptionen** wie Einheiten (`IS_METRIC`), 12/24-Stunden-Uhr (`IS_STYLE_12HR`) oder Wochentags-/Monatsnamen bei Bedarf anpassen.
 4. **Update-Intervalle** (`UPDATE_INTERVAL_SECS`) und Energiesparmodus (`SLEEP_INTERVAL_SECS`) nach Wunsch einstellen.
-5. **Touch-Unterstützung steuern:** Setze `#define TOUCH_ENABLED 1`, wenn du einen XPT2046-Touchcontroller angeschlossen hast. Ohne Touch belässt du den Wert auf `0`; dadurch werden Bibliothek und Abfragen automatisch deaktiviert.
+5. **Touch-Unterstützung steuern:**
+   - **Touch aktivieren:** Setze `#define TOUCH_ENABLED 1`, verbinde die Touch-Pins laut Tabelle und installiere die Bibliothek *XPT2046_Touchscreen*.
+   - **Touch deaktivieren:** Lasse die Touch-Pins offen, setze `#define TOUCH_ENABLED 0` (Standard) – damit entfällt der Bibliotheksbedarf und der Sketch überspringt jegliche Touch-Abfragen.
 
 > Tipp: Wenn du einen anderen Touch-Controller-Pin oder eine alternative Hardware-Version nutzt, passe die Pin-Definitionen am Ende der `settings.h` an und aktiviere den Touch nur bei Bedarf über `TOUCH_ENABLED`.
 
