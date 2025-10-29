@@ -144,6 +144,5 @@ Falls du das Projekt via Git verwaltest, kannst du nach erfolgtem Upload die Än
 ```bash
 git add .
 git commit -m "Aktualisiere Konfiguration"
-git push origin <branch>
+git push origin <codex/implement-esp32-and-bright-sky-api-1mdnuc>
 ```
-Ersetze `<branch>` durch den gewünschten Branch-Namen (z. B. `main` oder `work`).
